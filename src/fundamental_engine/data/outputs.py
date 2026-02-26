@@ -84,8 +84,10 @@ def _write_coverage_report(
         "found_tickers": report.found_tickers,
         "missing_tickers": report.missing_tickers,
         "coverage_ratio": round(report.coverage_ratio, 4),
+        "overall_coverage_pct": report.overall_coverage_pct,
         "filing_counts": report.filing_counts,
-        "missing_fields": report.missing_fields,
+        "statement_coverage": report.statement_coverage,
+        "ticker_coverage": report.ticker_coverage,
     }
     path = out_dir / "coverage_report.json"
     with path.open("w", encoding="utf-8") as fh:

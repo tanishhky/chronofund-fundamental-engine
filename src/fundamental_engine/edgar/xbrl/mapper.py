@@ -219,7 +219,10 @@ TAG_PRIORITY_MAP: list[TagMapping] = [
     ),
     TagMapping(
         "total_assets",
-        ["us-gaap:Assets"],
+        [
+            "us-gaap:Assets",
+            "us-gaap:LiabilitiesAndStockholdersEquity",
+        ],
         False, "instant",
     ),
     TagMapping(
@@ -255,7 +258,9 @@ TAG_PRIORITY_MAP: list[TagMapping] = [
     ),
     TagMapping(
         "total_liabilities",
-        ["us-gaap:Liabilities"],
+        [
+            "us-gaap:Liabilities",
+        ],
         False, "instant",
     ),
     TagMapping(

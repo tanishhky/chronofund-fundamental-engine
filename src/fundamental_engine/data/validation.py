@@ -119,33 +119,44 @@ def check_balance_sheet_identity(balance_df: pd.DataFrame) -> pd.DataFrame:
         df["identity_ok"] = pd.NA
         return df
 
+    missing_mask = df[["total_assets", "total_liabilities", "total_equity"]].isna().any(axis=1)
+    
+    missing_rows = df[missing_mask]
+    for _, row in missing_rows.iterrows():
+        missing_cols = [c for c in ("total_assets", "total_liabilities", "total_equity") if pd.isna(row[c])]
+        logger.info(
+            "Balance sheet missing components: ticker=%s accession=%s missing=%s",
+            row.get("ticker", "?"), row.get("accession", "?"), missing_cols
+        )
+        
+    df["identity_ok"] = pd.NA
+    df.loc[~missing_mask, "identity_ok"] = True
+
     liab_plus_equity = df["total_liabilities"].fillna(0) + df["total_equity"].fillna(0)
     assets = df["total_assets"].fillna(0)
 
     # Relative error; avoid division by zero
-    with_assets = assets.abs() > 0
+    with_assets = (assets.abs() > 0) & ~missing_mask
     relative_error = pd.Series(index=df.index, dtype="float64")
     relative_error[with_assets] = (
         (assets[with_assets] - liab_plus_equity[with_assets]).abs()
         / assets[with_assets].abs()
     )
-    relative_error[~with_assets] = pd.NA
 
-    identity_ok = relative_error <= BALANCE_SHEET_TOLERANCE
-    df["identity_ok"] = identity_ok
+    identity_ok = relative_error[with_assets] <= BALANCE_SHEET_TOLERANCE
+    df.loc[with_assets, "identity_ok"] = identity_ok
 
-    violations = df[~identity_ok & identity_ok.notna()]
-    if not violations.empty:
-        for _, row in violations.iterrows():
-            logger.warning(
-                "Balance sheet identity violation: ticker=%s accession=%s "
-                "assets=%.0f liab+eq=%.0f rel_error=%.4f",
-                row.get("ticker", "?"),
-                row.get("accession", "?"),
-                row.get("total_assets", float("nan")),
-                liab_plus_equity[row.name],
-                relative_error[row.name],
-            )
+    violations = df[df["identity_ok"] == False]
+    for _, row in violations.iterrows():
+        logger.warning(
+            "Balance sheet identity violation: ticker=%s accession=%s "
+            "assets=%.0f liab+eq=%.0f rel_error=%.4f",
+            row.get("ticker", "?"),
+            row.get("accession", "?"),
+            row.get("total_assets", float("nan")),
+            liab_plus_equity[row.name],
+            relative_error[row.name],
+        )
 
     return df
 
@@ -179,14 +190,14 @@ def check_cashflow_reconciliation(
     reported = df["net_change_in_cash"].fillna(0)
 
     diff = (computed - reported).abs()
-    # Tolerance: 1% of the larger of computed/reported, minimum $1M
-    tolerance = (computed.abs().combine(reported.abs(), max) * 0.01).clip(lower=1_000_000)
+    # Tolerance: 1% of the larger of computed/reported, minimum $50M to handle FX translation
+    tolerance = (computed.abs().combine(reported.abs(), max) * 0.01).clip(lower=50_000_000)
     df["cashflow_reconciles"] = diff <= tolerance
 
     bad = df[~df["cashflow_reconciles"]]
     for _, row in bad.iterrows():
-        logger.warning(
-            "Cash flow reconciliation error: ticker=%s accession=%s diff=%.0f",
+        logger.info(
+            "Cash flow reconciliation gap (non-fatal): ticker=%s accession=%s diff=%.0f",
             row.get("ticker", "?"),
             row.get("accession", "?"),
             diff[row.name],

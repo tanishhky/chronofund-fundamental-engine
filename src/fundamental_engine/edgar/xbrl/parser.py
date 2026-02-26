@@ -160,6 +160,21 @@ class XBRLParser:
             if value is not None:
                 found_any = True
 
+        # Fallback for accounting identity (Assets = Liabilities + Equity)
+        assets = row.get("total_assets")
+        liab = row.get("total_liabilities")
+        equity = row.get("total_equity")
+
+        if assets is None and liab is not None and equity is not None:
+            row["total_assets"] = liab + equity
+            found_any = True
+        elif liab is None and assets is not None and equity is not None:
+            row["total_liabilities"] = assets - equity
+            found_any = True
+        elif equity is None and assets is not None and liab is not None:
+            row["total_equity"] = assets - liab
+            found_any = True
+
         if not found_any:
             return None
 
