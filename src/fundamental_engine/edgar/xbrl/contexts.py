@@ -5,8 +5,23 @@ XBRL facts can have many contexts (time periods, entity segments).
 This module implements the logic for selecting the "best" context for
 each standardized field, preferring:
   1. Consolidated entity (no explicit segment)
-  2. Correct period duration (annual ~365d, quarterly ~90d)
+  2. Correct period duration (annual ~330–400d, quarterly ~80–100d)
   3. Most recently filed fact per period
+
+Key design decisions
+--------------------
+- `frame` is treated as a PREFERENCE signal, never a hard filter.
+  SEC's companyfacts API only assigns frame labels to facts that fall on
+  calendar-year boundaries (e.g., "CY2016Q3"). Companies with non-calendar
+  fiscal years (AAPL ends Sept, MSFT ends June) typically have NO frame on
+  their annual totals, so hard-filtering on frame drops all their data.
+
+- Period-end matching uses a ±7-day tolerance as a fallback.
+  52/53-week fiscal years, leap years, and XBRL reporting conventions mean
+  the SEC-reported period_end can differ by a few days from what the filing
+  index records as period_of_report. The primary match is still exact
+  (f.end == period_end); the fuzzy match is only used when nothing exact is
+  found.
 """
 
 from __future__ import annotations
@@ -19,6 +34,9 @@ from fundamental_engine.types import XBRLContextType, XBRLFact
 from fundamental_engine.utils.dates import is_annual_period, is_quarterly_period
 
 logger = logging.getLogger(__name__)
+
+# Tolerance in days for fuzzy period-end matching (covers 52/53-week year drift)
+_PERIOD_END_TOLERANCE_DAYS = 7
 
 
 def filter_facts_by_period_type(
@@ -37,8 +55,8 @@ def filter_facts_by_period_type(
         DURATION or INSTANT. Income/cashflow facts are DURATION; balance
         sheet facts are INSTANT.
     annual:
-        If True, only include annual (365-day) duration periods.
-        If False, include quarterly (~90d) periods.
+        If True, only include annual (330–400 day) duration periods.
+        If False, include quarterly (~80–100 day) periods.
 
     Returns
     -------
@@ -47,7 +65,6 @@ def filter_facts_by_period_type(
     result: list[XBRLFact] = []
     for fact in facts:
         if context_type == XBRLContextType.INSTANT:
-            # Instant facts have no start date
             if fact.start is None:
                 result.append(fact)
         elif context_type == XBRLContextType.DURATION:
@@ -63,10 +80,10 @@ def prefer_consolidated(facts: list[XBRLFact]) -> list[XBRLFact]:
     """
     Prefer facts without segment specifiers (i.e., consolidated entity).
 
-    In EDGAR, consolidated facts often have a 'frame' without entity segment
-    qualifiers. Facts with explicit segments (e.g., business units) are
-    deprioritized. We use the presence of a frame label as a proxy for
-    consolidated data.
+    ``frame`` is used as a PREFERENCE signal only — facts with a frame label
+    are returned if any exist. If none have frame labels (common for non-
+    calendar fiscal years), the full original list is returned unchanged so
+    that callers can still select the best fact.
 
     Parameters
     ----------
@@ -75,7 +92,7 @@ def prefer_consolidated(facts: list[XBRLFact]) -> list[XBRLFact]:
 
     Returns
     -------
-    Facts with frame set (consolidated), or original list if none have frames.
+    Facts with frame set if any exist; otherwise the original list.
     """
     with_frame = [f for f in facts if f.frame]
     return with_frame if with_frame else facts
@@ -90,14 +107,16 @@ def select_best_fact_for_period(
     Select the best XBRL fact for a specific period end date.
 
     Prioritization:
-    1. Facts where end == period_end
-    2. Facts filed most recently (but not after cutoff_date)
-    3. Most recently filed fact among ties
+    1. Exact match: f.end == period_end, filed <= cutoff_date
+    2. Prefer consolidated (frame) within the exact match set
+    3. Fuzzy fallback: |f.end - period_end| <= 7 days (for 52/53-week years)
+    4. Among ties: most recently filed
 
     Parameters
     ----------
     facts:
-        List of candidate facts with matching tag.
+        List of candidate facts with matching tag, already filtered by
+        period type (annual/quarterly) and consolidated preference.
     period_end:
         The fiscal period end date we want data for.
     cutoff_date:
@@ -107,21 +126,46 @@ def select_best_fact_for_period(
     -------
     The best XBRLFact or None if no suitable fact exists.
     """
-    # Only consider facts with matching period end and filed ≤ cutoff
-    candidates = [
-        f for f in facts
-        if f.end == period_end and f.filed <= cutoff_date
-    ]
+    # Primary: facts actually filed within the PIT window
+    eligible = [f for f in facts if f.filed <= cutoff_date]
 
-    if not candidates:
+    if not eligible:
         return None
 
-    # Prefer consolidated (with frame)
-    framed = [f for f in candidates if f.frame]
-    pool = framed if framed else candidates
+    # Exact period_end match
+    exact = [f for f in eligible if f.end == period_end]
 
-    # Among pool, pick most recently filed
-    return max(pool, key=lambda f: f.filed)
+    if exact:
+        # Prefer consolidated (with frame) within exact matches
+        framed = [f for f in exact if f.frame]
+        pool = framed if framed else exact
+        return max(pool, key=lambda f: f.filed)
+
+    # Fuzzy fallback: ±7 days to handle 52/53-week fiscal years and XBRL drift
+    tolerance = datetime.timedelta(days=_PERIOD_END_TOLERANCE_DAYS)
+    fuzzy = [
+        f for f in eligible
+        if abs((f.end - period_end).days) <= _PERIOD_END_TOLERANCE_DAYS
+    ]
+
+    if fuzzy:
+        # Among fuzzy matches, prefer the one whose end is closest to period_end,
+        # then prefer consolidated (framed), then most recently filed
+        best_distance = min(abs((f.end - period_end).days) for f in fuzzy)
+        closest = [f for f in fuzzy if abs((f.end - period_end).days) == best_distance]
+        framed = [f for f in closest if f.frame]
+        pool = framed if framed else closest
+
+        if logger.isEnabledFor(logging.DEBUG):
+            chosen = max(pool, key=lambda f: f.filed)
+            logger.debug(
+                "Fuzzy period_end match: requested=%s found=%s diff=%dd",
+                period_end, chosen.end, (chosen.end - period_end).days,
+            )
+
+        return max(pool, key=lambda f: f.filed)
+
+    return None
 
 
 def group_facts_by_period_end(

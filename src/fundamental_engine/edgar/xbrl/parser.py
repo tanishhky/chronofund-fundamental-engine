@@ -208,13 +208,17 @@ class XBRLParser:
 
         for full_tag in mapping.tags:
             candidates = facts.get(full_tag, [])
+            # Filter to the right period type (annual vs quarterly duration)
             filtered = filter_facts_by_period_type(
                 candidates,
                 XBRLContextType.DURATION,
                 annual=annual,
             )
-            consolidated = prefer_consolidated(filtered)
-            best = select_best_fact_for_period(consolidated, period_end, cutoff_date)
+            # Frame preference is applied inside select_best_fact_for_period
+            # AFTER period matching — calling prefer_consolidated before period
+            # matching would drop facts from years where no frame exists if OTHER
+            # years for the same tag do have frames.
+            best = select_best_fact_for_period(filtered, period_end, cutoff_date)
             if best is not None:
                 sign = -1.0 if mapping.sign_flip else 1.0
                 return best.value * sign
@@ -239,8 +243,8 @@ class XBRLParser:
                 XBRLContextType.INSTANT,
                 annual=True,  # irrelevant for instant—just pass True
             )
-            consolidated = prefer_consolidated(filtered)
-            best = select_best_fact_for_period(consolidated, period_end, cutoff_date)
+            # Frame preference applied inside select_best_fact_for_period
+            best = select_best_fact_for_period(filtered, period_end, cutoff_date)
             if best is not None:
                 return best.value
 
