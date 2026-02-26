@@ -88,6 +88,14 @@ TAG_PRIORITY_MAP: list[TagMapping] = [
         False, "duration",
     ),
     TagMapping(
+        "ebitda",
+        [
+            "us-gaap:EarningsBeforeInterestTaxesDepreciationAmortization",
+            "us-gaap:EBITDA",
+        ],
+        False, "duration",
+    ),
+    TagMapping(
         "interest_expense",
         [
             "us-gaap:InterestExpense",

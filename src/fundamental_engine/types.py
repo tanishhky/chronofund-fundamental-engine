@@ -90,14 +90,23 @@ class CoverageReport:
     missing_tickers:
         Tickers with no filings found.
     missing_fields:
-        {ticker: [field_name, ...]} for fields that could not be populated.
+        Detailed breakdown by statement and ticker.
     filing_counts:
         {ticker: count} of filings selected per ticker.
+    overall_coverage_pct:
+        Total cells populated divided by total expected cells across all statements.
+    statement_coverage:
+        {statement_name: {"rows": int, "coverage_pct": float, "missing_fields": [str]}}
+    ticker_coverage:
+        {ticker: {statement_name: {"rows": int, "coverage_pct": float, "missing_fields": [str]}}}
     """
 
     total_tickers: int
     found_tickers: list[str]
     missing_tickers: list[str]
+    overall_coverage_pct: float = 0.0
+    statement_coverage: dict[str, Any] = field(default_factory=dict)
+    ticker_coverage: dict[str, Any] = field(default_factory=dict)
     missing_fields: dict[str, list[str]] = field(default_factory=dict)
     filing_counts: dict[str, int] = field(default_factory=dict)
 

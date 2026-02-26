@@ -96,6 +96,29 @@ class XBRLParser:
             if value is not None:
                 found_any = True
 
+        # Fallback EBITDA calculation (EBIT + D&A) if not explicitly tagged
+        if row.get("ebitda") is None:
+            ebit = row.get("ebit")
+            # D&A is usually mapped under cash flow, but we can fetch it explicitly here
+            # for the income statement duration if needed, or look up mapping
+            da_mapping = FIELD_TO_MAPPING.get("depreciation_amortization")
+            da_val = None
+            if da_mapping:
+                for full_tag in da_mapping.tags:
+                    candidates = facts.get(full_tag, [])
+                    filtered = filter_facts_by_period_type(
+                        candidates, XBRLContextType.DURATION, annual=annual
+                    )
+                    best = select_best_fact_for_period(filtered, period_end, cutoff_date)
+                    if best is not None:
+                        sign = -1.0 if da_mapping.sign_flip else 1.0
+                        da_val = best.value * sign
+                        break
+            
+            if ebit is not None and da_val is not None:
+                row["ebitda"] = ebit + da_val
+                found_any = True
+
         if not found_any:
             logger.debug(
                 "No income facts found for %s accession=%s period=%s",
