@@ -16,15 +16,32 @@ import pandas as pd
 from fundamental_engine.bloomberg.mapping import BloombergMapper
 from fundamental_engine.bloomberg.parsers.xlsx_generic import XLSXGenericParser
 from fundamental_engine.config import EngineConfig
+from fundamental_engine.config_resolver import resolve_config
 from fundamental_engine.data.schema import (
     BALANCE_SCHEMA,
     CASHFLOW_SCHEMA,
     INCOME_SCHEMA,
 )
 from fundamental_engine.exceptions import BloombergParseError
-from fundamental_engine.types import DataSource, SnapshotResult, CoverageReport
+from fundamental_engine.types import (
+    CoverageReport,
+    DataSource,
+    FilingPeriodType,
+    SnapshotRequest,
+    SnapshotResult,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# Sentinel default request for callers who don't pass one
+def _default_request(ticker: str, cutoff_date: datetime.date) -> SnapshotRequest:
+    return SnapshotRequest(
+        tickers=[ticker],
+        cutoff_date=cutoff_date,
+        allow_ltm=False,
+        allow_estimates=False,
+    )
 
 
 def build_bloomberg_snapshot_from_xlsx(
@@ -32,6 +49,7 @@ def build_bloomberg_snapshot_from_xlsx(
     cutoff_date: datetime.date,
     ticker: str,
     config: EngineConfig | None = None,
+    request: SnapshotRequest | None = None,
 ) -> SnapshotResult:
     """
     Build a SnapshotResult from a Bloomberg XLSX export.
@@ -41,20 +59,29 @@ def build_bloomberg_snapshot_from_xlsx(
     path:
         Path to the Bloomberg XLSX file.
     cutoff_date:
-        Point-in-time cutoff. Columns added after this date are excluded.
+        Point-in-time cutoff. Columns after this date are excluded.
     ticker:
         Equity ticker to associate with the data.
     config:
-        Optional engine config (for estimate/LTM settings).
+        Optional engine config (supplies user_agent and defaults).
+    request:
+        Optional SnapshotRequest whose flags override config defaults.
+        If omitted, a safe default request is created (no estimates, no LTM).
 
     Returns
     -------
     SnapshotResult
     """
     cfg = config or EngineConfig()
+    req = request or _default_request(ticker, cutoff_date)
+
+    # Unified precedence: request > config
+    resolved = resolve_config(req, cfg)
+    resolved.assert_pit_safe()  # Fail fast if allow_estimates=True
+
     parser = XLSXGenericParser(
-        allow_ltm=cfg.allow_ltm,
-        allow_estimates=cfg.allow_estimates,
+        allow_ltm=resolved.allow_ltm,
+        allow_estimates=resolved.allow_estimates,
     )
 
     try:

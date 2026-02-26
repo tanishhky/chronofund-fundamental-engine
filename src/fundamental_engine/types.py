@@ -159,6 +159,7 @@ class FilingRecord:
     filing_date: datetime.date
     acceptance_datetime: datetime.datetime
     period_of_report: datetime.date
+    ticker: str = ""  # Equity ticker; set by FilingsIndex during resolution
 
 
 @dataclass

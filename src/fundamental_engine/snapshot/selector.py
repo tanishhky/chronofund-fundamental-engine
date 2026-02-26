@@ -31,11 +31,18 @@ class FilingSelector:
     Parameters
     ----------
     config:
-        Engine configuration controlling amendment preference.
+        Engine configuration providing the default allow_amendments setting.
+    allow_amendments:
+        If provided, overrides config.allow_amendments. Use this to pass in
+        the value from ResolvedConfig to enforce SnapshotRequest precedence.
     """
 
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: EngineConfig, allow_amendments: bool | None = None) -> None:
         self._config = config
+        # ResolvedConfig value takes precedence; fall back to engine config default
+        self._allow_amendments = (
+            allow_amendments if allow_amendments is not None else config.allow_amendments
+        )
 
     def select(
         self,
@@ -63,7 +70,7 @@ class FilingSelector:
             cutoff_end = datetime.datetime.combine(cutoff_date, datetime.time(23, 59, 59))
             if rec.acceptance_datetime > cutoff_end:
                 raise CutoffViolationError(
-                    ticker=rec.cik,
+                    ticker=rec.ticker or rec.cik,  # ticker is preferred; fall back to CIK
                     cutoff_date=cutoff_date,
                     acceptance_datetime=rec.acceptance_datetime,
                     accession=rec.accession,
@@ -87,10 +94,10 @@ class FilingSelector:
         Among candidate filings for the same period, pick the best one.
 
         Priority:
-        1. Amendment (10-K/A, 10-Q/A) if config.allow_amendments is True
+        1. Amendment (10-K/A, 10-Q/A) if allow_amendments is True
         2. Most recently filed (latest acceptance_datetime)
         """
-        if self._config.allow_amendments:
+        if self._allow_amendments:
             amendments = [c for c in candidates if c.form_type.endswith(_AMENDMENT_SUFFIX)]
             if amendments:
                 candidates = amendments

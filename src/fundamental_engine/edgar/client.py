@@ -6,6 +6,10 @@ Wraps requests with:
 - Rate limiting
 - Retry with exponential backoff
 - Response caching via diskcache
+
+Fix #5: Each EdgarClient instance owns its own requests.Session keyed to
+its user_agent. This allows multiple concurrent engine instances with
+different configurations in the same process without cross-contamination.
 """
 
 from __future__ import annotations
@@ -24,26 +28,32 @@ from fundamental_engine.utils.retry import check_response, with_retry
 
 logger = logging.getLogger(__name__)
 
-_SESSION: requests.Session | None = None
+# Module-level cache keyed by user_agent so distinct configs reuse connections
+# but never share a session with a different User-Agent.
+_SESSION_POOL: dict[str, requests.Session] = {}
 
 
 def _get_session(user_agent: str) -> requests.Session:
-    """Return a shared requests.Session with SEC User-Agent header."""
-    global _SESSION
-    if _SESSION is None:
-        _SESSION = requests.Session()
-        _SESSION.headers.update(
+    """Return a per-user-agent requests.Session (cached at module level)."""
+    if user_agent not in _SESSION_POOL:
+        session = requests.Session()
+        session.headers.update(
             {
                 "User-Agent": user_agent,
                 "Accept-Encoding": "gzip, deflate",
             }
         )
-    return _SESSION
+        _SESSION_POOL[user_agent] = session
+        logger.debug("Created new HTTP session for user_agent=%r", user_agent)
+    return _SESSION_POOL[user_agent]
 
 
 class EdgarClient:
     """
     SEC EDGAR HTTP client with rate limiting, caching, and retry logic.
+
+    Each instance gets its own rate limiter and cache, but shares the HTTP
+    session with other instances that use the same user_agent string.
 
     Parameters
     ----------
@@ -115,9 +125,7 @@ class EdgarClient:
         @with_retry(max_attempts=5, min_wait=2.0, max_wait=60.0)
         def _fetch() -> bytes:
             self._rate_limiter.acquire()
-            # SEC Archives uses a different host; update header for this request
-            headers = {"User-Agent": self._config.user_agent}
-            resp = requests.get(url, headers=headers, timeout=60)
+            resp = self._session.get(url, timeout=60)
             check_response(resp)
             return resp.content
 
@@ -126,10 +134,8 @@ class EdgarClient:
         return data  # type: ignore[return-value]
 
     def close(self) -> None:
-        """Close the underlying cache and requests session."""
+        """Close the underlying response cache (session is shared, not closed)."""
         self._cache.close()
-        if _SESSION:
-            _SESSION.close()
 
     def __enter__(self) -> "EdgarClient":
         return self

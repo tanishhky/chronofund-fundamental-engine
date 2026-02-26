@@ -216,6 +216,7 @@ class FilingsIndex:
                         filing_date=filing_date,
                         acceptance_datetime=acc_dt,
                         period_of_report=period_end,
+                        ticker=ticker,
                     )
                 )
             except Exception as exc:

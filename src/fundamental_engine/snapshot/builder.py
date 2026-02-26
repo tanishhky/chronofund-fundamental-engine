@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from fundamental_engine.config import EngineConfig
+from fundamental_engine.config_resolver import resolve_config
 from fundamental_engine.data.schema import (
     BALANCE_SCHEMA,
     CASHFLOW_SCHEMA,
@@ -73,13 +74,16 @@ def build_edgar_snapshot(
     SnapshotResult containing all standardized tables and coverage report.
     """
     cfg = config or EngineConfig.from_env()
+    resolved = resolve_config(request, cfg)
+    resolved.assert_pit_safe()  # Fail fast if allow_estimates=True
 
     with EdgarClient(cfg) as client:
         cik_mapper = CIKMapper(client)
         cik_mapper.load()
 
         filings_index = FilingsIndex(client, cfg)
-        selector = FilingSelector(cfg)
+        # Pass resolved config so FilingSelector uses the unified allow_amendments flag
+        selector = FilingSelector(cfg, allow_amendments=resolved.allow_amendments)
         xbrl_fetcher = XBRLFetcher(client)
 
         # Resolve tickers to CIKs
