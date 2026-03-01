@@ -214,6 +214,13 @@ def _load_tickers(csv_path: Path) -> list[str]:
     return tickers
 
 
+@click.group()
+def cli() -> None:
+    """Fundamental Engine CLI."""
+    pass
+
+cli.add_command(edgar_pull)
+cli.add_command(bbg_ingest)
+
 if __name__ == "__main__":
-    # Allow running individual commands: python -m fundamental_engine.cli.main
-    edgar_pull()
+    cli()
