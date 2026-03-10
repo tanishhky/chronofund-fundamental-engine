@@ -3,6 +3,8 @@
 > **Point-in-Time Fundamental Data Engine for Equity Research**
 > SEC EDGAR + Bloomberg · Production-Ready · Survivorship-Bias Aware
 
+![Fundamental Engine System Diagram Placeholder]([Insert System Architecture/Flow Image Here])
+
 ---
 
 ## Architecture Overview
