@@ -3,7 +3,8 @@
 > **Point-in-Time Fundamental Data Engine for Equity Research**
 > SEC EDGAR + Bloomberg · Production-Ready · Survivorship-Bias Aware
 
-![Fundamental Engine System Diagram Placeholder]([Insert System Architecture/Flow Image Here])
+Point-in-time correctness is enforced at four architectural layers and verified by
+65 passing tests plus a live end-to-end check on real SEC data (see [Validated Behavior](#validated-behavior)).
 
 ---
 
@@ -68,6 +69,25 @@ A filing for fiscal year 2016 is typically filed in February or March 2017. If y
   Cutoff: 2017-03-01   → Filing available (accepted Feb 15)
   Cutoff: 2017-12-31   → Restated data NOT available (filed Nov 2017)
 ```
+
+### Validated Behavior
+
+The point-in-time gate is verified two ways:
+
+1. **65 unit tests** (756 lines) pin the boundary cases, including the
+   one-second-past-cutoff rejection and the `CutoffViolationError` safety
+   assertion. Run `pytest`.
+2. **Live, end to end on real SEC EDGAR data.** Pulling Apple at two cutoffs that
+   straddle its FY2016 10-K (accepted 2016-10-26):
+
+   | As-of cutoff | Latest annual returned | Revenue |
+   |---|---|---|
+   | 2016-06-01 | FY2015 (ended 2015-09-26) | $233.7B |
+   | 2017-06-01 | FY2016 (ended 2016-09-24) | $215.6B |
+
+   The FY2016 filing is correctly withheld until after its acceptance date, with
+   accurate XBRL figures. The same fiscal-year boundary that silently corrupts
+   naive fundamental backtests is handled correctly.
 
 ---
 
