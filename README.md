@@ -1,10 +1,25 @@
 # Fundamental Engine
 
+![tests](https://github.com/tanishhky/chronofund-fundamental-engine/actions/workflows/tests.yml/badge.svg)
+
 > **Point-in-Time Fundamental Data Engine for Equity Research**
 > SEC EDGAR + Bloomberg · Production-Ready · Survivorship-Bias Aware
 
 Point-in-time correctness is enforced at four architectural layers and verified by
 65 passing tests plus a live end-to-end check on real SEC data (see [Validated Behavior](#validated-behavior)).
+
+**The proof, up front.** The same query for Apple's latest annual report at two
+as-of dates straddling the FY2016 10-K acceptance (2016-10-26) returns different,
+correct answers:
+
+| As-of cutoff | Latest annual returned | Revenue |
+|---|---|---|
+| 2016-06-01 | FY2015 (ended 2015-09-26) | $233.7B |
+| 2017-06-01 | FY2016 (ended 2016-09-24) | $215.6B |
+
+A report is invisible until the moment SEC actually accepted it, which is the
+property that separates a backtestable fundamental dataset from a lookahead-
+contaminated one.
 
 ---
 
