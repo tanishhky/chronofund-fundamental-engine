@@ -2,6 +2,8 @@
 
 ![tests](https://github.com/tanishhky/chronofund-fundamental-engine/actions/workflows/tests.yml/badge.svg)
 
+**Project page:** [tanishkyadav.me/projects/chronofund](https://www.tanishkyadav.me/projects/chronofund)
+
 > **Point-in-Time Fundamental Data Engine for Equity Research**
 > SEC EDGAR + Bloomberg · Production-Ready · Survivorship-Bias Aware
 
